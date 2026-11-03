@@ -381,12 +381,33 @@
   async function enviar(d){
     var cuerpo = new URLSearchParams(d);
     cuerpo.append('fecha_envio', new Date().toISOString());
+
+    var res;
     try{
-      await fetch(SCRIPT_URL, {method:'POST', body:cuerpo});
+      res = await fetch(SCRIPT_URL, {method:'POST', body:cuerpo});
     }catch(e){
-      // Fallback: si CORS bloquea la lectura de la respuesta, mandamos igual.
-      await fetch(SCRIPT_URL, {method:'POST', mode:'no-cors', body:cuerpo});
+      // El navegador no nos deja leer la respuesta: mandamos igual, a ciegas.
+      try{
+        await fetch(SCRIPT_URL, {method:'POST', mode:'no-cors', body:cuerpo});
+        return;
+      }catch(e2){
+        throw new Error('No pudimos conectarnos. Revisá tu conexión y volvé a intentar.');
+      }
     }
+
+    var txt = '';
+    try{ txt = await res.text(); }catch(e){ return; }
+
+    var json = null;
+    try{ json = JSON.parse(txt); }catch(e){}
+
+    if (json && json.ok === true) return;
+    if (json && json.ok === false){
+      throw new Error(json.error || 'La planilla rechazó la inscripción.');
+    }
+    // No vino JSON: suele ser la pantalla de login de Google, es decir
+    // que la implementación no está publicada para cualquier persona.
+    throw new Error('La planilla no confirmó la inscripción. Avisale a la organización.');
   }
 
   form.addEventListener('submit', async function(ev){
@@ -428,7 +449,7 @@
     }catch(err){
       boton.disabled = false;
       boton.textContent = 'Confirmar mi inscripción';
-      mostrarError('No pudimos registrar la inscripción. Revisá tu conexión y volvé a intentar.');
+      mostrarError((err && err.message) ? err.message : 'No pudimos registrar la inscripción. Revisá tu conexión y volvé a intentar.');
     }
   });
 
